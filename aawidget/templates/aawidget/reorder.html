@@ -1,0 +1,118 @@
+{% load i18n %}
+{# Onzichtbaar draagblok: levert de CSS + JS die de andere dashboardblokken
+   sleepbaar maakt en de volgorde per gebruiker onthoudt (localStorage). #}
+<div id="aaw-carrier" class="col-12" style="display:none;">
+<style>
+    .aaw-bar { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
+        margin:0 0 .9rem; padding:.45rem .75rem; border-radius:10px;
+        border:1px solid rgba(0,180,216,.28); background:rgba(0,180,216,.06);
+        font-size:.8rem; color:#8a93b2; }
+    .aaw-bar b { color:#00b4d8; }
+    .aaw-reset { background:none; border:1px solid rgba(255,255,255,.16); color:#8a93b2;
+        border-radius:6px; padding:.12rem .55rem; font-size:.72rem; cursor:pointer; }
+    .aaw-reset:hover { color:#fff; border-color:rgba(0,180,216,.5); }
+    .aaw-item { position:relative; }
+    .aaw-handle { position:absolute; top:10px; right:10px; z-index:6; cursor:grab;
+        width:28px; height:24px; display:flex; align-items:center; justify-content:center;
+        color:#cbd3ea; background:rgba(0,0,0,.55); border:1px solid rgba(0,180,216,.35);
+        border-radius:6px; font-size:.95rem; opacity:0; transition:opacity .12s; }
+    .aaw-item:hover .aaw-handle { opacity:1; }
+    .aaw-handle:active { cursor:grabbing; }
+    .aaw-item.aaw-drag { opacity:.45; }
+    .aaw-item.aaw-over { outline:2px dashed rgba(0,180,216,.65); outline-offset:-3px; border-radius:8px; }
+</style>
+<script>
+(function () {
+    var KEY = 'aawidget_dash_order';
+    function ready(fn) {
+        if (document.readyState !== 'loading') { fn(); }
+        else { document.addEventListener('DOMContentLoaded', fn); }
+    }
+    ready(function () {
+        var carrier = document.getElementById('aaw-carrier');
+        if (!carrier) { return; }
+        var row = carrier.parentElement;
+        if (!row) { return; }
+
+        // De echte widgets = alle directe kolom-kinderen behalve ons draagblok.
+        var items = [].slice.call(row.children).filter(function (el) { return el !== carrier; });
+        if (items.length < 2) { return; }   // niets te herschikken
+
+        function keyOf(el) {
+            if (el.dataset.aawKey) { return el.dataset.aawKey; }
+            var h = el.querySelector('h1,h2,h3,h4,h5,h6,.card-header,.card-title');
+            var t = (h ? h.textContent : '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 60);
+            if (!t) { t = 'blok-' + Array.prototype.indexOf.call(row.children, el); }
+            el.dataset.aawKey = t;
+            return t;
+        }
+
+        var drag = null;
+        function clearOver() { items.forEach(function (el) { el.classList.remove('aaw-over'); }); }
+        function currentOrder() {
+            return [].slice.call(row.children)
+                .filter(function (el) { return el !== carrier && el.classList.contains('aaw-item'); })
+                .map(keyOf);
+        }
+        function save() { try { localStorage.setItem(KEY, JSON.stringify(currentOrder())); } catch (e) {} }
+
+        items.forEach(function (el) {
+            keyOf(el);
+            el.classList.add('aaw-item');
+            var h = document.createElement('div');
+            h.className = 'aaw-handle';
+            h.title = '{% translate "Versleep om te herschikken" %}';
+            h.setAttribute('draggable', 'true');
+            h.innerHTML = '&#9776;';
+            el.appendChild(h);
+            h.addEventListener('dragstart', function (e) {
+                drag = el; el.classList.add('aaw-drag');
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', keyOf(el)); } catch (_) {}
+            });
+            h.addEventListener('dragend', function () {
+                if (drag) { drag.classList.remove('aaw-drag'); }
+                drag = null; clearOver(); save();
+            });
+        });
+
+        row.addEventListener('dragover', function (e) {
+            if (!drag) { return; }
+            e.preventDefault();
+            var t = e.target.closest ? e.target.closest('.aaw-item') : null;
+            clearOver();
+            if (t && t !== drag) {
+                t.classList.add('aaw-over');
+                var r = t.getBoundingClientRect();
+                var before = (e.clientX < r.left + r.width / 2);
+                row.insertBefore(drag, before ? t : t.nextSibling);
+            }
+        });
+
+        // Opgeslagen volgorde toepassen (onbekende/nieuwe blokken blijven achteraan).
+        (function apply() {
+            var saved;
+            try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { saved = []; }
+            if (!saved || !saved.length) { return; }
+            var map = {};
+            items.forEach(function (el) { map[keyOf(el)] = el; });
+            saved.forEach(function (k) { if (map[k]) { row.insertBefore(map[k], carrier); } });
+        })();
+
+        // Controlebalk bovenaan.
+        var bar = document.createElement('div');
+        bar.className = 'col-12';
+        bar.style.order = '-1';
+        bar.innerHTML = '<div class="aaw-bar">' +
+            '<span>&#8645; <b>{% translate "Herschik je dashboard" %}</b> — ' +
+            '{% translate "pak een blok bij de greep rechtsboven en sleep het." %}</span>' +
+            '<button type="button" class="aaw-reset">{% translate "Herstel standaard" %}</button></div>';
+        row.insertBefore(bar, row.firstChild);
+        bar.querySelector('.aaw-reset').addEventListener('click', function () {
+            try { localStorage.removeItem(KEY); } catch (e) {}
+            location.reload();
+        });
+    });
+})();
+</script>
+</div>
