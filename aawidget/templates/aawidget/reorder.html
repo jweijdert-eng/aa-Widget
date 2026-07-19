@@ -15,10 +15,24 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
     .aaw-reset { background:none; border:1px solid rgba(255,255,255,.16); color:#8a93b2;
         border-radius:6px; padding:.12rem .55rem; font-size:.72rem; cursor:pointer; }
     .aaw-reset:hover { color:#fff; border-color:rgba(0,180,216,.5); }
+    /* Aan/uit-schakelaar */
+    .aaw-toggle { display:inline-flex; align-items:center; gap:.45rem; background:none;
+        border:1px solid rgba(0,180,216,.35); color:#cbd3ea; border-radius:999px;
+        padding:.15rem .65rem; font-size:.75rem; font-weight:600; cursor:pointer; }
+    .aaw-sw { width:28px; height:15px; border-radius:999px; background:rgba(255,255,255,.15);
+        position:relative; transition:background .15s; }
+    .aaw-sw::after { content:''; position:absolute; top:1px; left:1px; width:13px; height:13px;
+        border-radius:50%; background:#8a93b2; transition:transform .15s, background .15s; }
+    .aaw-hint, #aaw-bar-col .aaw-reset { display:none; }
+    .aaw-editing .aaw-hint { display:inline; }
+    .aaw-editing #aaw-bar-col .aaw-reset { display:inline-block; }
+    .aaw-editing .aaw-toggle { border-color:rgba(0,180,216,.7); color:#fff; }
+    .aaw-editing .aaw-sw { background:rgba(0,180,216,.6); }
+    .aaw-editing .aaw-sw::after { transform:translateX(13px); background:#fff; }
     .aaw-item { position:relative; }
     .aaw-tools { position:absolute; top:10px; right:10px; z-index:6; display:flex; gap:3px;
-        opacity:0; transition:opacity .12s; }
-    .aaw-item:hover .aaw-tools { opacity:1; }
+        opacity:0; pointer-events:none; transition:opacity .12s; }
+    .aaw-editing .aaw-item:hover .aaw-tools { opacity:1; pointer-events:auto; }
     .aaw-btn { width:26px; height:24px; display:flex; align-items:center; justify-content:center;
         color:#cbd3ea; background:rgba(0,0,0,.6); border:1px solid rgba(0,180,216,.35);
         border-radius:6px; font-size:.85rem; cursor:pointer; user-select:none; padding:0; }
@@ -106,6 +120,7 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
             tools.querySelector('.aaw-bigger').addEventListener('click', function (e) { e.stopPropagation(); stepWidth(el, 1); });
             var handle = tools.querySelector('.aaw-handle');
             handle.addEventListener('dragstart', function (e) {
+                if (!row.classList.contains('aaw-editing')) { e.preventDefault(); return; }
                 drag = el; el.classList.add('aaw-drag');
                 e.dataTransfer.effectAllowed = 'move';
                 try { e.dataTransfer.setData('text/plain', keyOf(el)); } catch (_) {}
@@ -175,16 +190,34 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
         });
         mo.observe(row, { childList: true, subtree: true });
 
-        // Controlebalk bovenaan.
+        // Controlebalk bovenaan: aan/uit-schakelaar + (in bewerkmodus) hint & reset.
+        var EDITKEY = 'aawidget_edit';
         var bar = document.createElement('div');
         bar.className = 'col-12';
         bar.id = 'aaw-bar-col';
         bar.style.order = '-1';
         bar.innerHTML = '<div class="aaw-bar">' +
-            '<span>&#8645; <b>{% translate "Herschik je dashboard" %}</b> — ' +
-            '{% translate "sleep aan de greep, of maak een blok smaller/breder met de pijltjes." %}</span>' +
-            '<button type="button" class="aaw-reset">{% translate "Herstel standaard" %}</button></div>';
+            '<button type="button" class="aaw-toggle" aria-pressed="false">' +
+                '<span class="aaw-sw"></span> &#9998; {% translate "Dashboard bewerken" %}</button>' +
+            '<span class="aaw-hint">&#8645; <b>{% translate "Herschik je dashboard" %}</b> — ' +
+                '{% translate "sleep aan de greep, of maak een blok smaller/breder met de pijltjes." %}</span>' +
+            '<button type="button" class="aaw-reset">{% translate "Herstel standaard" %}</button>' +
+            '</div>';
         row.insertBefore(bar, row.firstChild);
+
+        var toggleBtn = bar.querySelector('.aaw-toggle');
+        function setEditing(on) {
+            row.classList.toggle('aaw-editing', on);
+            toggleBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            try { localStorage.setItem(EDITKEY, on ? '1' : '0'); } catch (e) {}
+        }
+        toggleBtn.addEventListener('click', function () {
+            setEditing(!row.classList.contains('aaw-editing'));
+        });
+        var startOn = false;
+        try { startOn = localStorage.getItem(EDITKEY) === '1'; } catch (e) {}
+        setEditing(startOn);   // beginstand: uit, tenzij eerder aangezet
+
         bar.querySelector('.aaw-reset').addEventListener('click', function () {
             try { localStorage.removeItem(OKEY); localStorage.removeItem(WKEY); } catch (e) {}
             location.reload();
