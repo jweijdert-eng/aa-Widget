@@ -10,8 +10,10 @@ blok) en onthoudt **jouw** volgorde in de browser (localStorage). Een knop
 *Herstel standaard* zet alles terug.
 
 - Geen template-override, geen conflict met andere branding-plugins.
-- Geen database, geen migraties, geen tokens of permissies.
-- De volgorde is persoonlijk en per browser.
+- Geen database, geen migraties, geen tokens.
+- Alleen zichtbaar voor **admins** (superuser/staff); de knoppen renderen niet
+  voor gewone leden.
+- De volgorde/breedte is persoonlijk en per browser (localStorage).
 
 ## Installatie
 

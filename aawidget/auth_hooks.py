@@ -18,6 +18,10 @@ class ReorderHook(DashboardItemHook):
         super().__init__(self.render_enhancer, order=9999)
 
     def render_enhancer(self, request):
+        # Alleen admins (superuser/staff) mogen het dashboard herschikken.
+        user = getattr(request, "user", None)
+        if not user or not (user.is_superuser or user.is_staff):
+            return ""
         return render_to_string("aawidget/reorder.html", {}, request=request)
 
 
