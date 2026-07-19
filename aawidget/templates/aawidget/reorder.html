@@ -1,6 +1,9 @@
 {% load i18n %}
-{# Onzichtbaar draagblok: levert de CSS + JS die de andere dashboardblokken
-   sleepbaar maakt en de volgorde per gebruiker onthoudt (localStorage). #}
+{% comment %}
+Onzichtbaar draagblok: levert de CSS + JS die de andere dashboardblokken
+sleepbaar én in breedte instelbaar maakt. Volgorde + breedte worden per
+gebruiker onthouden (localStorage).
+{% endcomment %}
 <div id="aaw-carrier" class="col-12" style="display:none;">
 <style>
     .aaw-bar { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
@@ -12,18 +15,24 @@
         border-radius:6px; padding:.12rem .55rem; font-size:.72rem; cursor:pointer; }
     .aaw-reset:hover { color:#fff; border-color:rgba(0,180,216,.5); }
     .aaw-item { position:relative; }
-    .aaw-handle { position:absolute; top:10px; right:10px; z-index:6; cursor:grab;
-        width:28px; height:24px; display:flex; align-items:center; justify-content:center;
-        color:#cbd3ea; background:rgba(0,0,0,.55); border:1px solid rgba(0,180,216,.35);
-        border-radius:6px; font-size:.95rem; opacity:0; transition:opacity .12s; }
-    .aaw-item:hover .aaw-handle { opacity:1; }
+    .aaw-tools { position:absolute; top:10px; right:10px; z-index:6; display:flex; gap:3px;
+        opacity:0; transition:opacity .12s; }
+    .aaw-item:hover .aaw-tools { opacity:1; }
+    .aaw-btn { width:26px; height:24px; display:flex; align-items:center; justify-content:center;
+        color:#cbd3ea; background:rgba(0,0,0,.6); border:1px solid rgba(0,180,216,.35);
+        border-radius:6px; font-size:.85rem; cursor:pointer; user-select:none; padding:0; }
+    .aaw-btn:hover { color:#fff; border-color:rgba(0,180,216,.7); background:rgba(0,180,216,.2); }
+    .aaw-btn:disabled { opacity:.3; cursor:default; }
+    .aaw-handle { cursor:grab; }
     .aaw-handle:active { cursor:grabbing; }
     .aaw-item.aaw-drag { opacity:.45; }
     .aaw-item.aaw-over { outline:2px dashed rgba(0,180,216,.65); outline-offset:-3px; border-radius:8px; }
 </style>
 <script>
 (function () {
-    var KEY = 'aawidget_dash_order';
+    var OKEY = 'aawidget_dash_order';
+    var WKEY = 'aawidget_dash_width';
+    var STEPS = [3, 4, 6, 8, 12];   // kwart, derde, half, tweederde, vol
     function ready(fn) {
         if (document.readyState !== 'loading') { fn(); }
         else { document.addEventListener('DOMContentLoaded', fn); }
@@ -34,19 +43,50 @@
         var row = carrier.parentElement;
         if (!row) { return; }
 
-        // De echte widgets = alle directe kolom-kinderen behalve ons draagblok.
         var items = [].slice.call(row.children).filter(function (el) { return el !== carrier; });
-        if (items.length < 2) { return; }   // niets te herschikken
+        if (items.length < 2) { return; }
 
         function keyOf(el) {
             if (el.dataset.aawKey) { return el.dataset.aawKey; }
-            var h = el.querySelector('h1,h2,h3,h4,h5,h6,.card-header,.card-title');
+            var h = el.querySelector('h1,h2,h3,h4,h5,h6,.card-header,.card-title,.obc-title');
             var t = (h ? h.textContent : '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 60);
             if (!t) { t = 'blok-' + Array.prototype.indexOf.call(row.children, el); }
             el.dataset.aawKey = t;
             return t;
         }
 
+        // ── breedte ──────────────────────────────────────────────────────
+        function loadWidths() { try { return JSON.parse(localStorage.getItem(WKEY) || '{}'); } catch (e) { return {}; } }
+        function saveWidths(w) { try { localStorage.setItem(WKEY, JSON.stringify(w)); } catch (e) {} }
+        function origSpan(el) {
+            var m = (el.className || '').match(/col-(?:xl-|lg-|md-|sm-)?(\d{1,2})(?!\d)/g);
+            var span = 12;
+            if (m) { var last = m[m.length - 1].match(/(\d{1,2})$/); if (last) { span = parseInt(last[1], 10); } }
+            return Math.min(12, Math.max(1, span));
+        }
+        function applyWidth(el, span) {
+            var pct = (span / 12 * 100);
+            el.style.flex = '0 0 ' + pct + '%';
+            el.style.maxWidth = pct + '%';
+            el.style.width = pct + '%';
+            el.dataset.aawSpan = span;
+        }
+        function currentSpan(el) {
+            if (el.dataset.aawSpan) { return parseInt(el.dataset.aawSpan, 10); }
+            return origSpan(el);
+        }
+        function stepWidth(el, dir) {
+            var span = currentSpan(el);
+            var i = STEPS.indexOf(span);
+            if (i === -1) {  // dichtstbijzijnde stap zoeken
+                i = 0; for (var j = 0; j < STEPS.length; j++) { if (STEPS[j] <= span) { i = j; } }
+            }
+            i = Math.max(0, Math.min(STEPS.length - 1, i + dir));
+            applyWidth(el, STEPS[i]);
+            var w = loadWidths(); w[keyOf(el)] = STEPS[i]; saveWidths(w);
+        }
+
+        // ── slepen ───────────────────────────────────────────────────────
         var drag = null;
         function clearOver() { items.forEach(function (el) { el.classList.remove('aaw-over'); }); }
         function currentOrder() {
@@ -54,25 +94,34 @@
                 .filter(function (el) { return el !== carrier && el.classList.contains('aaw-item'); })
                 .map(keyOf);
         }
-        function save() { try { localStorage.setItem(KEY, JSON.stringify(currentOrder())); } catch (e) {} }
+        function saveOrder() { try { localStorage.setItem(OKEY, JSON.stringify(currentOrder())); } catch (e) {} }
 
+        var savedW = loadWidths();
         items.forEach(function (el) {
             keyOf(el);
             el.classList.add('aaw-item');
-            var h = document.createElement('div');
-            h.className = 'aaw-handle';
-            h.title = '{% translate "Versleep om te herschikken" %}';
-            h.setAttribute('draggable', 'true');
-            h.innerHTML = '&#9776;';
-            el.appendChild(h);
-            h.addEventListener('dragstart', function (e) {
+            if (savedW[keyOf(el)]) { applyWidth(el, savedW[keyOf(el)]); }
+
+            var tools = document.createElement('div');
+            tools.className = 'aaw-tools';
+            tools.innerHTML =
+                '<button type="button" class="aaw-btn aaw-smaller" title="{% translate "Smaller" %}">&#9668;</button>' +
+                '<span class="aaw-btn aaw-handle" title="{% translate "Versleep om te herschikken" %}" draggable="true">&#9776;</span>' +
+                '<button type="button" class="aaw-btn aaw-bigger" title="{% translate "Breder" %}">&#9658;</button>';
+            el.appendChild(tools);
+
+            tools.querySelector('.aaw-smaller').addEventListener('click', function (e) { e.stopPropagation(); stepWidth(el, -1); });
+            tools.querySelector('.aaw-bigger').addEventListener('click', function (e) { e.stopPropagation(); stepWidth(el, 1); });
+
+            var handle = tools.querySelector('.aaw-handle');
+            handle.addEventListener('dragstart', function (e) {
                 drag = el; el.classList.add('aaw-drag');
                 e.dataTransfer.effectAllowed = 'move';
                 try { e.dataTransfer.setData('text/plain', keyOf(el)); } catch (_) {}
             });
-            h.addEventListener('dragend', function () {
+            handle.addEventListener('dragend', function () {
                 if (drag) { drag.classList.remove('aaw-drag'); }
-                drag = null; clearOver(); save();
+                drag = null; clearOver(); saveOrder();
             });
         });
 
@@ -89,10 +138,10 @@
             }
         });
 
-        // Opgeslagen volgorde toepassen (onbekende/nieuwe blokken blijven achteraan).
-        (function apply() {
+        // Opgeslagen volgorde toepassen (nieuwe blokken blijven achteraan).
+        (function applyOrder() {
             var saved;
-            try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { saved = []; }
+            try { saved = JSON.parse(localStorage.getItem(OKEY) || '[]'); } catch (e) { saved = []; }
             if (!saved || !saved.length) { return; }
             var map = {};
             items.forEach(function (el) { map[keyOf(el)] = el; });
@@ -105,11 +154,11 @@
         bar.style.order = '-1';
         bar.innerHTML = '<div class="aaw-bar">' +
             '<span>&#8645; <b>{% translate "Herschik je dashboard" %}</b> — ' +
-            '{% translate "pak een blok bij de greep rechtsboven en sleep het." %}</span>' +
+            '{% translate "sleep aan de greep, of maak een blok smaller/breder met de pijltjes." %}</span>' +
             '<button type="button" class="aaw-reset">{% translate "Herstel standaard" %}</button></div>';
         row.insertBefore(bar, row.firstChild);
         bar.querySelector('.aaw-reset').addEventListener('click', function () {
-            try { localStorage.removeItem(KEY); } catch (e) {}
+            try { localStorage.removeItem(OKEY); localStorage.removeItem(WKEY); } catch (e) {}
             location.reload();
         });
     });
