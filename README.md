@@ -43,6 +43,16 @@ pip install -e .            # editable, voor lokale ontwikkeling
 Voeg `aawidget` toe aan `INSTALLED_APPS`, draai `python manage.py migrate` en
 herstart AA. Klaar — open het dashboard en sleep.
 
+## Uitbrengen
+
+**Zet hier zelf geen tag op.** De workflow doet dat: hij leest `__version__` uit
+`aawidget/__init__.py` bij elke push naar `main`, en maakt de tag en de release
+alleen als die tag er nog niet is. Staat de tag er al, dan slaat hij het bouwen
+over en krijg je een geslaagde run zónder release — precies het geval dat je niet
+meteen doorhebt.
+
+Uitbrengen is dus: versienummer omhoog, committen, pushen. Meer niet.
+
 ## Hoe het werkt
 
 `aawidget/auth_hooks.py` registreert een `DashboardItemHook` met een hoge
