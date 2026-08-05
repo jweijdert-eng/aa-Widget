@@ -1,11 +1,17 @@
 {% load i18n %}
 {% comment %}
-Onzichtbaar draagblok: levert de CSS + JS die de andere dashboardblokken
-sleepbaar én in breedte instelbaar maakt. Volgorde + breedte worden per
-gebruiker onthouden (localStorage). Een MutationObserver plaatst de greep
-opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
+Onzichtbaar draagblok: levert de CSS + JS die de dashboardblokken in de door de
+admin vastgelegde volgorde en breedte zet.
+
+Iedereen krijgt dit blok — anders zou de indeling alleen voor de admin gelden.
+Alleen wie mag indelen krijgt er de balk en de sleepgrepen bij; voor de rest is
+het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
+(bv. ESI Status) z'n eigen inhoud hertekent.
 {% endcomment %}
 <div id="aaw-carrier" class="col-12" style="display:none;">
+{{ aaw_volgorde|json_script:"aaw-volgorde" }}
+{{ aaw_breedtes|json_script:"aaw-breedtes" }}
+{% if aaw_mag_indelen %}<form id="aaw-csrf" style="display:none;">{% csrf_token %}</form>{% endif %}
 <style>
     .aaw-bar { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
         margin:0 0 .9rem; padding:.45rem .75rem; border-radius:10px;
@@ -41,12 +47,24 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
     .aaw-handle:active { cursor:grabbing; }
     .aaw-item.aaw-drag { opacity:.45; }
     .aaw-item.aaw-over { outline:2px dashed rgba(0,180,216,.65); outline-offset:-3px; border-radius:8px; }
+    /* Bewaarstand rechts in de balk. */
+    .aaw-stand { margin-left:auto; font-size:.72rem; }
+    .aaw-stand.aaw-bezig { color:#f0c040; }
+    .aaw-stand.aaw-klaar { color:#3ecf6e; }
+    .aaw-stand.aaw-mis { color:#e05555; }
 </style>
 <script>
 (function () {
-    var OKEY = 'aawidget_dash_order';
-    var WKEY = 'aawidget_dash_width';
     var STEPS = [3, 4, 6, 8, 12];   // kwart, derde, half, tweederde, vol
+    function lees(id, terugval) {
+        var el = document.getElementById(id);
+        if (!el) { return terugval; }
+        try { return JSON.parse(el.textContent); } catch (e) { return terugval; }
+    }
+    var MAG = {{ aaw_mag_indelen|yesno:"true,false" }};
+    var URL_OPSLAAN = "{% url 'aawidget:opslaan' %}";
+    var URL_HERSTELLEN = "{% url 'aawidget:herstellen' %}";
+
     function ready(fn) {
         if (document.readyState !== 'loading') { fn(); }
         else { document.addEventListener('DOMContentLoaded', fn); }
@@ -57,6 +75,8 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
         var row = carrier.parentElement;
         if (!row) { return; }
 
+        var volgorde = lees('aaw-volgorde', []) || [];
+        var breedtes = lees('aaw-breedtes', {}) || {};
         var drag = null;
 
         function keyOf(el) {
@@ -68,9 +88,44 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
             return t;
         }
 
+        // ── bewaren (alleen admins) ──────────────────────────────────────
+        var stand = null, bewaarTimer = null;
+        function toon(klasse, tekst) {
+            if (!stand) { return; }
+            stand.className = 'aaw-stand ' + klasse;
+            stand.textContent = tekst;
+        }
+        function token() {
+            var el = document.querySelector('#aaw-csrf [name=csrfmiddlewaretoken]');
+            return el ? el.value : '';
+        }
+        function stuur(url, lading, klaar) {
+            return fetch(url, {
+                method: 'POST', credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': token()},
+                body: JSON.stringify(lading || {})
+            }).then(function (r) {
+                if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                return r.json();
+            }).then(function (a) {
+                toon('aaw-klaar', '{% translate "opgeslagen voor iedereen" %}');
+                if (klaar) { klaar(a); }
+            }).catch(function () {
+                toon('aaw-mis', '{% translate "opslaan mislukt" %}');
+            });
+        }
+        // Gedebounced: tijdens slepen vuurt dit anders bij elke muisbeweging.
+        function bewaar() {
+            if (!MAG) { return; }
+            toon('aaw-bezig', '{% translate "opslaan…" %}');
+            if (bewaarTimer) { clearTimeout(bewaarTimer); }
+            bewaarTimer = setTimeout(function () {
+                bewaarTimer = null;
+                stuur(URL_OPSLAAN, {volgorde: currentOrder(), breedtes: breedtes});
+            }, 600);
+        }
+
         // ── breedte ──────────────────────────────────────────────────────
-        function loadWidths() { try { return JSON.parse(localStorage.getItem(WKEY) || '{}'); } catch (e) { return {}; } }
-        function saveWidths(w) { try { localStorage.setItem(WKEY, JSON.stringify(w)); } catch (e) {} }
         function origSpan(el) {
             var m = (el.getAttribute('class') || '').match(/col-(?:xl-|lg-|md-|sm-)?(\d{1,2})(?!\d)/g);
             var span = 12;
@@ -94,7 +149,8 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
             if (i === -1) { i = 0; for (var j = 0; j < STEPS.length; j++) { if (STEPS[j] <= span) { i = j; } } }
             i = Math.max(0, Math.min(STEPS.length - 1, i + dir));
             applyWidth(el, STEPS[i]);
-            var w = loadWidths(); w[keyOf(el)] = STEPS[i]; saveWidths(w);
+            breedtes[keyOf(el)] = STEPS[i];
+            bewaar();
         }
 
         // ── volgorde ─────────────────────────────────────────────────────
@@ -104,10 +160,10 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
                 .filter(function (el) { return el.classList.contains('aaw-item'); })
                 .map(keyOf);
         }
-        function saveOrder() { try { localStorage.setItem(OKEY, JSON.stringify(currentOrder())); } catch (e) {} }
 
         // ── greep + knoppen op één blok (idempotent) ──────────────────────
         function buildTools(el) {
+            if (!MAG) { return; }
             if (el.querySelector(':scope > .aaw-tools')) { return; }   // al aanwezig
             var tools = document.createElement('div');
             tools.className = 'aaw-tools';
@@ -127,17 +183,16 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
             });
             handle.addEventListener('dragend', function () {
                 if (drag) { drag.classList.remove('aaw-drag'); }
-                drag = null; clearOver(); saveOrder();
+                drag = null; clearOver(); bewaar();
             });
         }
 
         // Een dashboardblok "adopteren": klasse, sleutel, bewaarde breedte, greep.
         function adopt(el) {
             if (el === carrier || el.id === 'aaw-bar-col') { return; }
-            keyOf(el);
+            var k = keyOf(el);
             el.classList.add('aaw-item');
-            var w = loadWidths();
-            if (w[keyOf(el)] && !el.dataset.aawSpan) { applyWidth(el, w[keyOf(el)]); }
+            if (breedtes[k] && !el.dataset.aawSpan) { applyWidth(el, breedtes[k]); }
             buildTools(el);
         }
 
@@ -151,33 +206,13 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
 
         // Eerste ronde.
         scan();
-        var items = [].slice.call(row.children).filter(function (el) {
-            return el !== carrier && el.classList.contains('aaw-item');
-        });
-        if (items.length < 2) { return; }
 
-        // Slepen (delegatie op de rij).
-        row.addEventListener('dragover', function (e) {
-            if (!drag) { return; }
-            e.preventDefault();
-            var t = e.target.closest ? e.target.closest('.aaw-item') : null;
-            clearOver();
-            if (t && t !== drag) {
-                t.classList.add('aaw-over');
-                var r = t.getBoundingClientRect();
-                var before = (e.clientX < r.left + r.width / 2);
-                row.insertBefore(drag, before ? t : t.nextSibling);
-            }
-        });
-
-        // Opgeslagen volgorde toepassen (nieuwe blokken blijven achteraan).
+        // Vastgelegde volgorde toepassen (nieuwe blokken blijven achteraan).
         (function applyOrder() {
-            var saved;
-            try { saved = JSON.parse(localStorage.getItem(OKEY) || '[]'); } catch (e) { saved = []; }
-            if (!saved || !saved.length) { return; }
+            if (!volgorde.length) { return; }
             var map = {};
             [].forEach.call(row.querySelectorAll('.aaw-item'), function (el) { map[keyOf(el)] = el; });
-            saved.forEach(function (k) { if (map[k]) { row.insertBefore(map[k], carrier); } });
+            volgorde.forEach(function (k) { if (map[k]) { row.insertBefore(map[k], carrier); } });
         })();
 
         // Zelfherstel: als een widget z'n inhoud hertekent en de greep wist,
@@ -190,7 +225,30 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
         });
         mo.observe(row, { childList: true, subtree: true });
 
+        // Vanaf hier alleen nog het gereedschap voor wie mag indelen.
+        if (!MAG) { return; }
+        var items = [].slice.call(row.children).filter(function (el) {
+            return el !== carrier && el.classList.contains('aaw-item');
+        });
+        if (items.length < 2) { return; }
+
+        // Slepen (delegatie op de rij).
+        row.addEventListener('dragover', function (e) {
+            if (!drag) { return; }
+            e.preventDefault();
+            var t2 = e.target.closest ? e.target.closest('.aaw-item') : null;
+            clearOver();
+            if (t2 && t2 !== drag) {
+                t2.classList.add('aaw-over');
+                var r = t2.getBoundingClientRect();
+                var before = (e.clientX < r.left + r.width / 2);
+                row.insertBefore(drag, before ? t2 : t2.nextSibling);
+            }
+        });
+
         // Controlebalk bovenaan: aan/uit-schakelaar + (in bewerkmodus) hint & reset.
+        // De schakelaar zelf blijft in localStorage: dat is geen indeling maar
+        // een persoonlijke voorkeur, en die hoeft niemand anders te zien.
         var EDITKEY = 'aawidget_edit';
         var bar = document.createElement('div');
         bar.className = 'col-12';
@@ -199,11 +257,13 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
         bar.innerHTML = '<div class="aaw-bar">' +
             '<button type="button" class="aaw-toggle" aria-pressed="false">' +
                 '<span class="aaw-sw"></span> &#9998; {% translate "Dashboard bewerken" %}</button>' +
-            '<span class="aaw-hint">&#8645; <b>{% translate "Herschik je dashboard" %}</b> — ' +
-                '{% translate "sleep aan de greep, of maak een blok smaller/breder met de pijltjes." %}</span>' +
+            '<span class="aaw-hint">&#8645; <b>{% translate "Herschik het dashboard" %}</b> — ' +
+                '{% translate "sleep aan de greep, of maak een blok smaller/breder met de pijltjes. Wat je hier doet geldt voor iedereen." %}</span>' +
             '<button type="button" class="aaw-reset">{% translate "Herstel standaard" %}</button>' +
+            '<span class="aaw-stand"></span>' +
             '</div>';
         row.insertBefore(bar, row.firstChild);
+        stand = bar.querySelector('.aaw-stand');
 
         var toggleBtn = bar.querySelector('.aaw-toggle');
         function setEditing(on) {
@@ -219,8 +279,8 @@ opnieuw als een widget (bv. ESI Status) z'n eigen inhoud hertekent.
         setEditing(startOn);   // beginstand: uit, tenzij eerder aangezet
 
         bar.querySelector('.aaw-reset').addEventListener('click', function () {
-            try { localStorage.removeItem(OKEY); localStorage.removeItem(WKEY); } catch (e) {}
-            location.reload();
+            if (!window.confirm('{% translate "De standaardindeling terugzetten voor iedereen?" %}')) { return; }
+            stuur(URL_HERSTELLEN, {}, function () { location.reload(); });
         });
     });
 })();
