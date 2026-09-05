@@ -10,7 +10,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 
-from aawidget.models import Indeling, schoon_breedtes, schoon_volgorde
+from aawidget.models import (Indeling, schoon_breedtes, schoon_verborgen,
+                             schoon_volgorde)
 
 
 def mag_indelen(user):
@@ -39,6 +40,7 @@ def opslaan(request):
     indeling = Indeling.haal()
     indeling.volgorde = schoon_volgorde(gegevens.get("volgorde"))
     indeling.breedtes = schoon_breedtes(gegevens.get("breedtes"))
+    indeling.verborgen = schoon_verborgen(gegevens.get("verborgen"))
     indeling.door = request.user
     indeling.save()
     return JsonResponse({"ok": True, "blokken": len(indeling.volgorde)})
@@ -54,6 +56,7 @@ def herstellen(request):
     indeling = Indeling.haal()
     indeling.volgorde = []
     indeling.breedtes = {}
+    indeling.verborgen = []
     indeling.door = request.user
     indeling.save()
     return JsonResponse({"ok": True})

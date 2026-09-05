@@ -10,10 +10,26 @@ meelevert: dat zet de blokken in de vastgelegde volgorde en breedte, en geeft
 admins een greep rechtsboven op elk blok om dat te veranderen.
 
 - **Eén indeling voor iedereen.** Een admin sleept, iedereen ziet het resultaat.
+- **Blokken verbergen** met het oogje: weg voor de hele site, terwijl jij ze in
+  bewerkmodus doorzichtig laat staan om ze terug te kunnen zetten.
 - Geen template-override, geen conflict met andere branding-plugins.
 - Geen tokens; wel één tabel met één rij.
 - Gewone leden zien geen balk en geen grepen — voor hen wordt de indeling
   alleen toegepast.
+
+## Blokken verbergen
+
+Elk blok heeft in bewerkmodus een oogje naast de greep. Klik je dat aan, dan is
+het blok voor de hele site weg — precies zoals bij de volgorde en de breedte.
+
+Voor wie mag indelen blijft het blok wél staan zolang *Dashboard bewerken*
+aanstaat: doorzichtig, met een streepje eromheen. Anders zou je een blok
+wegklikken en het nooit meer terugvinden. In de balk staat hoeveel er verborgen
+zijn, en *Herstel standaard* zet alles weer aan.
+
+Let op: dit verbergt het blok in de **weergave**. Het onderliggende recht of de
+plugin blijft gewoon werken — wie de URL kent komt er nog. Gebruik het om je
+dashboard rustig te houden, niet om iets af te schermen.
 
 ## Wie mag indelen
 

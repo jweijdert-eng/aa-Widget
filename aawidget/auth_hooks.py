@@ -36,13 +36,15 @@ class ReorderHook(DashboardItemHook):
             return ""
         try:
             indeling = Indeling.haal()
-            volgorde, breedtes = indeling.volgorde, indeling.breedtes
+            volgorde = indeling.volgorde
+            breedtes = indeling.breedtes
+            verborgen = indeling.verborgen
         except Exception:  # noqa: BLE001 — tabel bestaat nog niet (vóór migrate)
-            volgorde, breedtes = [], {}
+            volgorde, breedtes, verborgen = [], {}, []
         return render_to_string(
             "aawidget/reorder.html",
             {"aaw_volgorde": volgorde, "aaw_breedtes": breedtes,
-             "aaw_mag_indelen": mag_indelen(user)},
+             "aaw_verborgen": verborgen, "aaw_mag_indelen": mag_indelen(user)},
             request=request)
 
 

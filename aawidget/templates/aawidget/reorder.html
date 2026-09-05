@@ -11,6 +11,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
 <div id="aaw-carrier" class="col-12" style="display:none;">
 {{ aaw_volgorde|json_script:"aaw-volgorde" }}
 {{ aaw_breedtes|json_script:"aaw-breedtes" }}
+{{ aaw_verborgen|json_script:"aaw-verborgen" }}
 {% if aaw_mag_indelen %}<form id="aaw-csrf" style="display:none;">{% csrf_token %}</form>{% endif %}
 <style>
     .aaw-bar { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
@@ -46,6 +47,15 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
     .aaw-handle { cursor:grab; }
     .aaw-handle:active { cursor:grabbing; }
     .aaw-item.aaw-drag { opacity:.45; }
+    /* Verborgen blokken zijn er voor niemand - behalve voor wie ze weer terug
+       moet kunnen zetten. Die ziet ze in bewerkmodus doorzichtig staan, met
+       een streepje eromheen, zodat duidelijk is dat de rest ze niet heeft. */
+    .aaw-item.aaw-verborgen { display:none; }
+    .aaw-editing .aaw-item.aaw-verborgen { display:block; opacity:.32;
+        outline:1px dashed rgba(255,255,255,.25); outline-offset:-3px; border-radius:8px; }
+    .aaw-editing .aaw-item.aaw-verborgen .aaw-tools { opacity:1; pointer-events:auto; }
+    .aaw-btn.aaw-uit { border-color:rgba(224,85,85,.5); color:#e8a0a0; }
+    .aaw-tel { font-size:.72rem; color:#8a93b2; }
     .aaw-item.aaw-over { outline:2px dashed rgba(0,180,216,.65); outline-offset:-3px; border-radius:8px; }
     /* Bewaarstand rechts in de balk. */
     .aaw-stand { margin-left:auto; font-size:.72rem; }
@@ -77,6 +87,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
 
         var volgorde = lees('aaw-volgorde', []) || [];
         var breedtes = lees('aaw-breedtes', {}) || {};
+        var verborgen = lees('aaw-verborgen', []) || [];
         var drag = null;
 
         function keyOf(el) {
@@ -121,7 +132,8 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             if (bewaarTimer) { clearTimeout(bewaarTimer); }
             bewaarTimer = setTimeout(function () {
                 bewaarTimer = null;
-                stuur(URL_OPSLAAN, {volgorde: currentOrder(), breedtes: breedtes});
+                stuur(URL_OPSLAAN, {volgorde: currentOrder(), breedtes: breedtes,
+                                    verborgen: verborgen});
             }, 600);
         }
 
@@ -153,6 +165,30 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             bewaar();
         }
 
+        // ── verbergen ────────────────────────────────────────────────────
+        function isVerborgen(k) { return verborgen.indexOf(k) !== -1; }
+        function zetVerborgen(el, uit) {
+            var k = keyOf(el);
+            var i = verborgen.indexOf(k);
+            if (uit && i === -1) { verborgen.push(k); }
+            if (!uit && i !== -1) { verborgen.splice(i, 1); }
+            el.classList.toggle('aaw-verborgen', uit);
+            var knop = el.querySelector(':scope > .aaw-tools .aaw-oog');
+            if (knop) { pasOogAan(knop, uit); }
+            telVerborgen();
+        }
+        function pasOogAan(knop, uit) {
+            knop.classList.toggle('aaw-uit', uit);
+            knop.innerHTML = uit ? '&#128065;' : '&#128584;';   // oog / dichte ogen
+            knop.title = uit ? '{% translate "Weer tonen" %}' : '{% translate "Verbergen" %}';
+        }
+        var telEl = null;
+        function telVerborgen() {
+            if (!telEl) { return; }
+            telEl.textContent = verborgen.length
+                ? verborgen.length + ' {% translate "verborgen" %}' : '';
+        }
+
         // ── volgorde ─────────────────────────────────────────────────────
         function clearOver() { [].forEach.call(row.querySelectorAll('.aaw-over'), function (el) { el.classList.remove('aaw-over'); }); }
         function currentOrder() {
@@ -170,8 +206,16 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             tools.innerHTML =
                 '<button type="button" class="aaw-btn aaw-smaller" title="{% translate "Smaller" %}">&#9668;</button>' +
                 '<span class="aaw-btn aaw-handle" title="{% translate "Versleep om te herschikken" %}" draggable="true">&#9776;</span>' +
-                '<button type="button" class="aaw-btn aaw-bigger" title="{% translate "Breder" %}">&#9658;</button>';
+                '<button type="button" class="aaw-btn aaw-bigger" title="{% translate "Breder" %}">&#9658;</button>' +
+                '<button type="button" class="aaw-btn aaw-oog"></button>';
             el.appendChild(tools);
+            var oog = tools.querySelector('.aaw-oog');
+            pasOogAan(oog, el.classList.contains('aaw-verborgen'));
+            oog.addEventListener('click', function (e) {
+                e.stopPropagation();
+                zetVerborgen(el, !el.classList.contains('aaw-verborgen'));
+                bewaar();
+            });
             tools.querySelector('.aaw-smaller').addEventListener('click', function (e) { e.stopPropagation(); stepWidth(el, -1); });
             tools.querySelector('.aaw-bigger').addEventListener('click', function (e) { e.stopPropagation(); stepWidth(el, 1); });
             var handle = tools.querySelector('.aaw-handle');
@@ -193,6 +237,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             var k = keyOf(el);
             el.classList.add('aaw-item');
             if (breedtes[k] && !el.dataset.aawSpan) { applyWidth(el, breedtes[k]); }
+            if (isVerborgen(k)) { el.classList.add('aaw-verborgen'); }
             buildTools(el);
         }
 
@@ -258,12 +303,15 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             '<button type="button" class="aaw-toggle" aria-pressed="false">' +
                 '<span class="aaw-sw"></span> &#9998; {% translate "Dashboard bewerken" %}</button>' +
             '<span class="aaw-hint">&#8645; <b>{% translate "Herschik het dashboard" %}</b> — ' +
-                '{% translate "sleep aan de greep, of maak een blok smaller/breder met de pijltjes. Wat je hier doet geldt voor iedereen." %}</span>' +
+                '{% translate "sleep aan de greep, maak een blok smaller/breder met de pijltjes, of verberg het met het oogje. Wat je hier doet geldt voor iedereen." %}</span>' +
+            '<span class="aaw-tel"></span>' +
             '<button type="button" class="aaw-reset">{% translate "Herstel standaard" %}</button>' +
             '<span class="aaw-stand"></span>' +
             '</div>';
         row.insertBefore(bar, row.firstChild);
         stand = bar.querySelector('.aaw-stand');
+        telEl = bar.querySelector('.aaw-tel');
+        telVerborgen();
 
         var toggleBtn = bar.querySelector('.aaw-toggle');
         function setEditing(on) {

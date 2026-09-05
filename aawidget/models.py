@@ -30,6 +30,11 @@ class Indeling(models.Model):
     breedtes = models.JSONField(
         default=dict, blank=True, verbose_name=_("Breedtes"),
         help_text=_("Per blok het aantal kolommen van de twaalf."))
+    verborgen = models.JSONField(
+        default=list, blank=True, verbose_name=_("Verborgen"),
+        help_text=_("De sleutels van blokken die niemand te zien krijgt. Wie "
+                    "mag indelen ziet ze nog wel, doorzichtig, om ze terug te "
+                    "kunnen zetten."))
     door = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         blank=True, verbose_name=_("Laatst gewijzigd door"))
@@ -61,6 +66,16 @@ def schoon_volgorde(waarde):
         if isinstance(sleutel, str) and sleutel.strip():
             uit.append(sleutel.strip()[:MAX_SLEUTEL])
     return uit
+
+
+def schoon_verborgen(waarde):
+    """Welke blokken verborgen zijn.
+
+    Dezelfde vorm als de volgorde - een lijst sleutels - dus hetzelfde
+    schoonmaakwerk. Een aparte functie omdat de betekenis verschilt en de
+    volgende die hier komt kijken dat meteen moet zien.
+    """
+    return schoon_volgorde(waarde)
 
 
 def schoon_breedtes(waarde):
