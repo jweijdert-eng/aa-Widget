@@ -17,6 +17,8 @@ from django.utils.translation import gettext_lazy as _
 # ongecontroleerde invoer die je later weer op de pagina zet blijft ongezond.
 MAX_BLOKKEN = 100
 MAX_SLEUTEL = 80
+MAX_STUKKEN = 200
+MAX_PAD = 300
 BREEDTES = (3, 4, 6, 8, 12)     # kwart, derde, half, tweederde, vol
 
 
@@ -35,6 +37,12 @@ class Indeling(models.Model):
         help_text=_("De sleutels van blokken die niemand te zien krijgt. Wie "
                     "mag indelen ziet ze nog wel, doorzichtig, om ze terug te "
                     "kunnen zetten."))
+    stukken = models.JSONField(
+        default=list, blank=True, verbose_name=_("Verborgen stukken"),
+        help_text=_("Delen bínnen een blok die weg mogen, als paren van "
+                    "bloksleutel en css-pad. Zo kun je bijvoorbeeld alleen de "
+                    "geschiedenis onder de ESI-status weghalen zonder het hele "
+                    "blok te verliezen."))
     door = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         blank=True, verbose_name=_("Laatst gewijzigd door"))
@@ -76,6 +84,31 @@ def schoon_verborgen(waarde):
     volgende die hier komt kijken dat meteen moet zien.
     """
     return schoon_volgorde(waarde)
+
+
+def schoon_stukken(waarde):
+    """De verborgen stukken: telkens een bloksleutel plus een css-pad.
+
+    Het pad gaat straks door `querySelectorAll` van de browser. Een fout pad
+    levert daar een uitzondering op die we opvangen, dus het ergste dat een
+    onzinwaarde doet is niets - maar lengte begrenzen we hier wel, want dit
+    komt van buiten en gaat de pagina weer op.
+    """
+    if not isinstance(waarde, list):
+        return []
+    uit = []
+    for stuk in waarde[:MAX_STUKKEN]:
+        if not isinstance(stuk, dict):
+            continue
+        blok = stuk.get("blok")
+        pad = stuk.get("pad")
+        if not isinstance(blok, str) or not isinstance(pad, str):
+            continue
+        blok, pad = blok.strip(), pad.strip()
+        if not blok or not pad:
+            continue
+        uit.append({"blok": blok[:MAX_SLEUTEL], "pad": pad[:MAX_PAD]})
+    return uit
 
 
 def schoon_breedtes(waarde):

@@ -12,6 +12,8 @@ admins een greep rechtsboven op elk blok om dat te veranderen.
 - **Eén indeling voor iedereen.** Een admin sleept, iedereen ziet het resultaat.
 - **Blokken verbergen** met het oogje: weg voor de hele site, terwijl jij ze in
   bewerkmodus doorzichtig laat staan om ze terug te kunnen zetten.
+- **Een stuk bínnen een blok wegknippen** met de schaar — bijvoorbeeld alleen
+  de *Status History* onder de ESI-status, zonder het blok zelf te verliezen.
 - Geen template-override, geen conflict met andere branding-plugins.
 - Geen tokens; wel één tabel met één rij.
 - Gewone leden zien geen balk en geen grepen — voor hen wordt de indeling
@@ -30,6 +32,26 @@ zijn, en *Herstel standaard* zet alles weer aan.
 Let op: dit verbergt het blok in de **weergave**. Het onderliggende recht of de
 plugin blijft gewoon werken — wie de URL kent komt er nog. Gebruik het om je
 dashboard rustig te houden, niet om iets af te schermen.
+
+## Een stuk binnen een blok weghalen
+
+Soms is een heel blok te grof: je wilt de ESI-status houden maar de *Status
+History* eronder niet. Klik in bewerkmodus op **✂ Stukken verbergen**, wijs het
+stuk aan (het licht rood op) en klik. Weg voor de hele site.
+
+In die stand doet een klik verder niets — geen link volgen, geen knop indrukken
+— want anders zou je bij het aanwijzen halve widgets bedienen. Klik nogmaals op
+de schaar om er weer uit te gaan.
+
+Wat er onthouden wordt is de bloksleutel plus een css-pad binnen dat blok. Heeft
+het element een eigen klasse (`esi-status-history`), dan gebruiken we die;
+opmaakklassen als `mb-3` en `col-6` slaan we over, want die zeggen niets en
+veranderen zodra iemand aan de opmaak zit. Is er geen bruikbare klasse, dan valt
+hij terug op de plek in de boom. Verandert de plugin daarna van opbouw, dan
+vindt het pad niets meer en komt het stuk gewoon weer tevoorschijn — nooit een
+lege pagina.
+
+Dit blijft **weergave**: de plugin draait door, alleen zie je dat stuk niet.
 
 ## Wie mag indelen
 

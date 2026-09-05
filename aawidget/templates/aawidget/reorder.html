@@ -12,6 +12,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
 {{ aaw_volgorde|json_script:"aaw-volgorde" }}
 {{ aaw_breedtes|json_script:"aaw-breedtes" }}
 {{ aaw_verborgen|json_script:"aaw-verborgen" }}
+{{ aaw_stukken|json_script:"aaw-stukken" }}
 {% if aaw_mag_indelen %}<form id="aaw-csrf" style="display:none;">{% csrf_token %}</form>{% endif %}
 <style>
     .aaw-bar { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
@@ -55,6 +56,19 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
         outline:1px dashed rgba(255,255,255,.25); outline-offset:-3px; border-radius:8px; }
     .aaw-editing .aaw-item.aaw-verborgen .aaw-tools { opacity:1; pointer-events:auto; }
     .aaw-btn.aaw-uit { border-color:rgba(224,85,85,.5); color:#e8a0a0; }
+    /* Stukken bínnen een blok. Weg is weg, behalve in de schaar-modus: dan
+       staan ze doorzichtig met een rode streep, zodat je ze terug kunt klikken.
+       `revert` omdat we niet weten wat het oorspronkelijke display was - een
+       tabelrij is geen block. */
+    .aaw-stuk-weg { display:none !important; }
+    .aaw-stukmodus .aaw-stuk-weg { display:revert !important; opacity:.3;
+        outline:1px dashed rgba(224,85,85,.7); outline-offset:2px; }
+    .aaw-stukmodus .aaw-item * { cursor:crosshair; }
+    .aaw-stuk-hover { outline:2px solid rgba(224,85,85,.85) !important; outline-offset:2px;
+        background:rgba(224,85,85,.08); }
+    .aaw-schaar { border-color:rgba(224,85,85,.45); color:#e8a0a0; }
+    .aaw-stukmodus .aaw-schaar, .aaw-schaar.aaw-aan { border-color:rgba(224,85,85,.9);
+        color:#fff; background:rgba(224,85,85,.18); }
     .aaw-tel { font-size:.72rem; color:#8a93b2; }
     .aaw-item.aaw-over { outline:2px dashed rgba(0,180,216,.65); outline-offset:-3px; border-radius:8px; }
     /* Bewaarstand rechts in de balk. */
@@ -88,6 +102,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
         var volgorde = lees('aaw-volgorde', []) || [];
         var breedtes = lees('aaw-breedtes', {}) || {};
         var verborgen = lees('aaw-verborgen', []) || [];
+        var stukken = lees('aaw-stukken', []) || [];
         var drag = null;
 
         function keyOf(el) {
@@ -133,7 +148,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             bewaarTimer = setTimeout(function () {
                 bewaarTimer = null;
                 stuur(URL_OPSLAAN, {volgorde: currentOrder(), breedtes: breedtes,
-                                    verborgen: verborgen});
+                                    verborgen: verborgen, stukken: stukken});
             }, 600);
         }
 
@@ -187,6 +202,77 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             if (!telEl) { return; }
             telEl.textContent = verborgen.length
                 ? verborgen.length + ' {% translate "verborgen" %}' : '';
+        }
+
+        // ── stukken bínnen een blok ──────────────────────────────────────
+        //
+        // Een blok verbergen is grof: soms wil je alleen de geschiedenis onder
+        // de ESI-status weg. Daarvoor onthouden we een css-pad binnen het blok.
+        // Klassen zijn stabieler dan posities, maar alleen als ze iets
+        // betékenen - `mb-3` en `col-6` zeggen niets en veranderen zodra iemand
+        // aan de opmaak zit.
+        var NIETSZEGGEND = new RegExp('^(row|col|col-|mb-|mt-|ms-|me-|mx-|my-|p-|px-|py-|pt-|pb-|' +
+            'ps-|pe-|d-|text-|bg-|border|rounded|shadow|card|container|flex|justify-|align-|' +
+            'g-|gap-|w-|h-|fs-|fw-|small|float-|position-|overflow-|table|btn|badge|aaw-)');
+
+        function padVan(el, blok) {
+            var eigen = [].filter.call(el.classList || [], function (c) {
+                return c && !NIETSZEGGEND.test(c);
+            });
+            if (eigen.length) {
+                var sel = '.' + eigen.join('.');
+                try { if (blok.querySelectorAll(sel).length) { return sel; } } catch (e) {}
+            }
+            // Geen bruikbare klasse: dan maar de plek in de boom, vanaf het blok.
+            var delen = [], cur = el, stap = 0;
+            while (cur && cur !== blok && stap++ < 12) {
+                var ouder = cur.parentElement;
+                if (!ouder) { break; }
+                var i = Array.prototype.indexOf.call(ouder.children, cur) + 1;
+                delen.unshift(cur.tagName.toLowerCase() + ':nth-child(' + i + ')');
+                cur = ouder;
+            }
+            return delen.join(' > ');
+        }
+
+        function blokMet(sleutel) {
+            var uit = null;
+            [].forEach.call(row.querySelectorAll('.aaw-item'), function (el) {
+                if (!uit && keyOf(el) === sleutel) { uit = el; }
+            });
+            return uit;
+        }
+
+        function pasStukkenToe() {
+            [].forEach.call(row.querySelectorAll('.aaw-stuk-weg'), function (el) {
+                el.classList.remove('aaw-stuk-weg');
+            });
+            stukken.forEach(function (stuk) {
+                var blok = blokMet(stuk.blok);
+                if (!blok || !stuk.pad) { return; }
+                try {
+                    [].forEach.call(blok.querySelectorAll(stuk.pad), function (el) {
+                        el.classList.add('aaw-stuk-weg');
+                    });
+                } catch (e) { /* pad van een oudere versie van dat blok */ }
+            });
+            telStukken();
+        }
+
+        var stukTelEl = null;
+        function telStukken() {
+            if (!stukTelEl) { return; }
+            stukTelEl.textContent = stukken.length
+                ? stukken.length + (stukken.length === 1
+                    ? ' {% translate "stuk weg" %}' : ' {% translate "stukken weg" %}')
+                : '';
+        }
+
+        function stukIndex(blokSleutel, pad) {
+            for (var i = 0; i < stukken.length; i++) {
+                if (stukken[i].blok === blokSleutel && stukken[i].pad === pad) { return i; }
+            }
+            return -1;
         }
 
         // ── volgorde ─────────────────────────────────────────────────────
@@ -251,6 +337,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
 
         // Eerste ronde.
         scan();
+        pasStukkenToe();
 
         // Vastgelegde volgorde toepassen (nieuwe blokken blijven achteraan).
         (function applyOrder() {
@@ -266,7 +353,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
         var t = null;
         var mo = new MutationObserver(function () {
             if (t) { return; }
-            t = setTimeout(function () { t = null; scan(); }, 200);
+            t = setTimeout(function () { t = null; scan(); pasStukkenToe(); }, 200);
         });
         mo.observe(row, { childList: true, subtree: true });
 
@@ -303,15 +390,79 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             '<button type="button" class="aaw-toggle" aria-pressed="false">' +
                 '<span class="aaw-sw"></span> &#9998; {% translate "Dashboard bewerken" %}</button>' +
             '<span class="aaw-hint">&#8645; <b>{% translate "Herschik het dashboard" %}</b> — ' +
-                '{% translate "sleep aan de greep, maak een blok smaller/breder met de pijltjes, of verberg het met het oogje. Wat je hier doet geldt voor iedereen." %}</span>' +
+                '{% translate "sleep aan de greep, maak een blok smaller/breder met de pijltjes, of verberg het met het oogje. Met de schaar klik je een los stuk binnen een blok weg. Wat je hier doet geldt voor iedereen." %}</span>' +
+            '<button type="button" class="aaw-reset aaw-schaar">&#9986; ' +
+                '{% translate "Stukken verbergen" %}</button>' +
             '<span class="aaw-tel"></span>' +
+            '<span class="aaw-tel aaw-tel-stuk"></span>' +
             '<button type="button" class="aaw-reset">{% translate "Herstel standaard" %}</button>' +
             '<span class="aaw-stand"></span>' +
             '</div>';
         row.insertBefore(bar, row.firstChild);
         stand = bar.querySelector('.aaw-stand');
         telEl = bar.querySelector('.aaw-tel');
+        stukTelEl = bar.querySelector('.aaw-tel-stuk');
         telVerborgen();
+        telStukken();
+
+        // De schaar: in deze stand klik je een stúk binnen een blok weg.
+        // Bewust een aparte stand, want anders zou elke klik op het dashboard
+        // - een link, een knop in een widget - iets laten verdwijnen.
+        var schaar = bar.querySelector('.aaw-schaar');
+        function zetSchaar(aan) {
+            row.classList.toggle('aaw-stukmodus', aan);
+            schaar.classList.toggle('aaw-aan', aan);
+            if (!aan) {
+                [].forEach.call(row.querySelectorAll('.aaw-stuk-hover'), function (el) {
+                    el.classList.remove('aaw-stuk-hover');
+                });
+            }
+        }
+        schaar.addEventListener('click', function () {
+            if (!row.classList.contains('aaw-editing')) { setEditing(true); }
+            zetSchaar(!row.classList.contains('aaw-stukmodus'));
+        });
+
+        var laatsteHover = null;
+        row.addEventListener('mouseover', function (e) {
+            if (!row.classList.contains('aaw-stukmodus')) { return; }
+            var doel = e.target.closest ? e.target.closest('.aaw-item') : null;
+            if (laatsteHover) { laatsteHover.classList.remove('aaw-stuk-hover'); laatsteHover = null; }
+            if (!doel || e.target === doel || e.target.closest('.aaw-tools')) { return; }
+            laatsteHover = e.target;
+            laatsteHover.classList.add('aaw-stuk-hover');
+        });
+
+        row.addEventListener('click', function (e) {
+            if (!row.classList.contains('aaw-stukmodus')) { return; }
+            var blok = e.target.closest ? e.target.closest('.aaw-item') : null;
+            if (!blok || e.target === blok || e.target.closest('.aaw-tools')) { return; }
+            // In deze stand hoort een klik niets anders te doen: geen link
+            // volgen, geen formulier versturen.
+            e.preventDefault();
+            e.stopPropagation();
+            var el = e.target;
+            var sleutel = keyOf(blok);
+            if (el.classList.contains('aaw-stuk-weg')) {
+                // Terugzetten: zoek welk pad hem verborg.
+                for (var i = stukken.length - 1; i >= 0; i--) {
+                    var stuk = stukken[i];
+                    if (stuk.blok !== sleutel) { continue; }
+                    var raak = false;
+                    try { raak = [].indexOf.call(blok.querySelectorAll(stuk.pad), el) !== -1; }
+                    catch (x) { raak = false; }
+                    if (raak) { stukken.splice(i, 1); }
+                }
+            } else {
+                var pad = padVan(el, blok);
+                if (!pad) { return; }
+                if (stukIndex(sleutel, pad) === -1) { stukken.push({blok: sleutel, pad: pad}); }
+            }
+            el.classList.remove('aaw-stuk-hover');
+            laatsteHover = null;
+            pasStukkenToe();
+            bewaar();
+        }, true);
 
         var toggleBtn = bar.querySelector('.aaw-toggle');
         function setEditing(on) {
