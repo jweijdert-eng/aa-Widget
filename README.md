@@ -36,12 +36,18 @@ dashboard rustig te houden, niet om iets af te schermen.
 ## Een stuk binnen een blok weghalen
 
 Soms is een heel blok te grof: je wilt de ESI-status houden maar de *Status
-History* eronder niet. Klik in bewerkmodus op **✂ Stukken verbergen**, wijs het
-stuk aan (het licht rood op) en klik. Weg voor de hele site.
+History* eronder niet. Klik in bewerkmodus op de **schaar** in de hoek van dat
+blok. Je krijgt een lijstje met de stukken van dat blok, elk met een vinkje —
+zet uit wat weg mag. Bestaat een stuk zelf weer uit stukken, dan klik je met de
+pijl **›** erin; **‹ terug** brengt je een niveau omhoog.
 
-In die stand doet een klik verder niets — geen link volgen, geen knop indrukken
-— want anders zou je bij het aanwijzen halve widgets bedienen. Klik nogmaals op
-de schaar om er weer uit te gaan.
+*Waarom een lijstje en geen aanwijzen?* Dat was de eerste opzet: met de muis het
+stuk aanwijzen dat weg moest. Alleen pakt een klik het diépste element onder de
+cursor — meestal een `<span>` met drie woorden, niet de sectie die je bedoelde.
+Nu zoekt de plugin de secties zelf op: hij zakt door de omhulsels (`col`, `card`,
+`card-body`) tot hij een niveau vindt waar meerdere stukken naast elkaar staan.
+Je leest wat je uitzet in plaats van dat je moet mikken, en aanzetten gaat net zo
+makkelijk.
 
 Wat er onthouden wordt is de bloksleutel plus een css-pad binnen dat blok. Heeft
 het element een eigen klasse (`esi-status-history`), dan gebruiken we die;

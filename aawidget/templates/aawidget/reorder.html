@@ -61,14 +61,29 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
        `revert` omdat we niet weten wat het oorspronkelijke display was - een
        tabelrij is geen block. */
     .aaw-stuk-weg { display:none !important; }
-    .aaw-stukmodus .aaw-stuk-weg { display:revert !important; opacity:.3;
+    .aaw-kiest .aaw-stuk-weg { display:revert !important; opacity:.3;
         outline:1px dashed rgba(224,85,85,.7); outline-offset:2px; }
-    .aaw-stukmodus .aaw-item * { cursor:crosshair; }
-    .aaw-stuk-hover { outline:2px solid rgba(224,85,85,.85) !important; outline-offset:2px;
-        background:rgba(224,85,85,.08); }
-    .aaw-schaar { border-color:rgba(224,85,85,.45); color:#e8a0a0; }
-    .aaw-stukmodus .aaw-schaar, .aaw-schaar.aaw-aan { border-color:rgba(224,85,85,.9);
-        color:#fff; background:rgba(224,85,85,.18); }
+    .aaw-btn.aaw-schaar { border-color:rgba(224,85,85,.45); color:#e8a0a0; }
+    .aaw-btn.aaw-schaar.aaw-aan { border-color:rgba(224,85,85,.9); color:#fff;
+        background:rgba(224,85,85,.25); }
+    /* Het lijstje met secties, onder de knoppen van dat ene blok. */
+    .aaw-secties { position:absolute; top:40px; right:10px; z-index:7; width:min(320px, 90%);
+        background:#11141c; border:1px solid rgba(0,180,216,.35); border-radius:8px;
+        padding:.5rem; box-shadow:0 6px 22px rgba(0,0,0,.55); font-size:.78rem; }
+    .aaw-secties h6 { color:#8a93b2; font-size:.7rem; text-transform:uppercase;
+        letter-spacing:.06em; margin:.1rem .2rem .45rem; }
+    .aaw-sectie { display:flex; align-items:center; gap:.5rem; padding:.25rem .3rem;
+        border-radius:5px; color:#cbd3ea; cursor:pointer; }
+    .aaw-sectie:hover { background:rgba(0,180,216,.12); }
+    .aaw-sectie input { accent-color:#00b4d8; }
+    .aaw-sectie span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .aaw-sectie.aaw-uitgezet span { text-decoration:line-through; color:#8a93b2; }
+    .aaw-sectie-leeg { color:#8a93b2; padding:.2rem .3rem; }
+    .aaw-sectie span { flex:1; }
+    .aaw-dieper, .aaw-terug { background:none; border:0; color:#00b4d8; cursor:pointer;
+        font-size:.9rem; padding:0 .25rem; }
+    .aaw-dieper:hover, .aaw-terug:hover { color:#fff; }
+    .aaw-secties h6 { display:flex; align-items:center; gap:.25rem; }
     .aaw-tel { font-size:.72rem; color:#8a93b2; }
     .aaw-item.aaw-over { outline:2px dashed rgba(0,180,216,.65); outline-offset:-3px; border-radius:8px; }
     /* Bewaarstand rechts in de balk. */
@@ -104,6 +119,12 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
         var verborgen = lees('aaw-verborgen', []) || [];
         var stukken = lees('aaw-stukken', []) || [];
         var drag = null;
+
+        function esc(t) {
+            var d = document.createElement('div');
+            d.textContent = t == null ? '' : t;
+            return d.innerHTML;
+        }
 
         function keyOf(el) {
             if (el.dataset.aawKey) { return el.dataset.aawKey; }
@@ -215,6 +236,15 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             'ps-|pe-|d-|text-|bg-|border|rounded|shadow|card|container|flex|justify-|align-|' +
             'g-|gap-|w-|h-|fs-|fw-|small|float-|position-|overflow-|table|btn|badge|aaw-)');
 
+        /**
+         * Het css-pad naar een sectie binnen zijn blok.
+         *
+         * Een eigen klasse gaat voor: die overleeft een herschikking, en
+         * `.esi-status-history` zegt ook iets als je later in de admin kijkt.
+         * Opmaakklassen (mb-3, col-6, card) slaan we over - die zeggen niets en
+         * veranderen zodra iemand aan de styling zit. Blijft er niets over, dan
+         * de plek in de boom.
+         */
         function padVan(el, blok) {
             var eigen = [].filter.call(el.classList || [], function (c) {
                 return c && !NIETSZEGGEND.test(c);
@@ -223,7 +253,6 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
                 var sel = '.' + eigen.join('.');
                 try { if (blok.querySelectorAll(sel).length) { return sel; } } catch (e) {}
             }
-            // Geen bruikbare klasse: dan maar de plek in de boom, vanaf het blok.
             var delen = [], cur = el, stap = 0;
             while (cur && cur !== blok && stap++ < 12) {
                 var ouder = cur.parentElement;
@@ -233,6 +262,166 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
                 cur = ouder;
             }
             return delen.join(' > ');
+        }
+
+        /**
+         * Welke stukken zijn hier los aan of uit te zetten?
+         *
+         * Een dashboardblok is `col > card > card-body > de echte secties`, en
+         * bij zulke omhulsels valt niets te kiezen. Daarom zakken we door elk
+         * niveau dat maar één kind heeft, tot we een laag vinden waar er
+         * meerdere naast elkaar staan. Dát is wat een mens "de stukken van dit
+         * blok" noemt.
+         */
+        function sectiesVan(ouder) {
+            var stap = 0;
+            while (ouder && stap++ < 6) {
+                var kids = [].filter.call(ouder.children, function (el) {
+                    if (el.classList.contains('aaw-tools') ||
+                        el.classList.contains('aaw-secties')) { return false; }
+                    var tag = el.tagName;
+                    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEMPLATE') { return false; }
+                    // Verborgen stukken tellen mee, anders kun je ze niet terugzetten.
+                    if (el.classList.contains('aaw-stuk-weg')) { return true; }
+                    return !!(el.textContent || '').trim() || el.children.length > 0;
+                });
+                if (kids.length > 1) { return kids.slice(0, 25); }
+                if (kids.length === 1) { ouder = kids[0]; continue; }
+                return [];
+            }
+            return [];
+        }
+
+        /** Valt er in dit stuk zelf nog iets te kiezen? */
+        function heeftSecties(el) {
+            return sectiesVan(el).length > 1;
+        }
+
+        /** Een leesbare naam voor zo'n sectie: een kop, anders de eerste woorden. */
+        function naamVanSectie(el) {
+            var kop = el.querySelector('h1,h2,h3,h4,h5,h6,.card-header,.card-title,legend,caption');
+            var t = ((kop ? kop.textContent : '') || el.textContent || '')
+                .replace(/\s+/g, ' ').trim();
+            if (!t) { t = el.tagName.toLowerCase(); }
+            return t.length > 44 ? t.slice(0, 44) + '…' : t;
+        }
+
+        /**
+         * Het lijstje secties van één blok openen of sluiten.
+         *
+         * Aanwijzen met de muis pakte het diepste element onder de cursor -
+         * meestal een span met drie woorden. Nu zoekt de plugin de secties zelf
+         * op en zet ze op een rij: je leest wat je uitzet, en je zet het net zo
+         * makkelijk weer aan. Zolang het lijstje openstaat blijven uitgezette
+         * stukken doorzichtig staan, zodat je ziet waar je mee bezig bent.
+         */
+        function wisselSecties(blok) {
+            var open = blok.querySelector(':scope > .aaw-secties');
+            sluitSecties();
+            if (open) { return; }
+            blok.classList.add('aaw-kiest');
+            toonSecties(blok, blok, []);
+        }
+
+        /**
+         * Het lijstje tekenen voor één niveau.
+         *
+         * `pad` is het kruimelspoor: waar je ingezakt bent. Zo kun je een stuk
+         * openen dat zelf weer uit stukken bestaat (de ESI-status heeft een kop,
+         * een lijst en een geschiedenis) zonder dat je het hele blok kwijt bent.
+         */
+        function toonSecties(blok, ouder, kruimels) {
+            var oud = blok.querySelector(':scope > .aaw-secties');
+            if (oud) { oud.remove(); }
+
+            var paneel = document.createElement('div');
+            paneel.className = 'aaw-secties';
+            var secties = sectiesVan(ouder);
+            var sleutel = keyOf(blok);
+
+            var kop = '<h6>' + (kruimels.length
+                ? '<button type="button" class="aaw-terug">&#8249; ' +
+                  '{% translate "terug" %}</button> ' + esc(kruimels[kruimels.length - 1])
+                : '{% translate "Stukken van dit blok" %}') + '</h6>';
+            paneel.innerHTML = kop;
+
+            if (!secties.length) {
+                var leeg = document.createElement('div');
+                leeg.className = 'aaw-sectie-leeg';
+                leeg.textContent = '{% translate "Hier valt niets los uit te zetten." %}';
+                paneel.appendChild(leeg);
+            }
+
+            secties.forEach(function (el) {
+                var pad = padVan(el, blok);
+                if (!pad) { return; }
+                var uitgezet = el.classList.contains('aaw-stuk-weg');
+                var regel = document.createElement('div');
+                regel.className = 'aaw-sectie' + (uitgezet ? ' aaw-uitgezet' : '');
+                regel.title = pad;
+
+                var vink = document.createElement('input');
+                vink.type = 'checkbox';
+                vink.checked = !uitgezet;
+                vink.addEventListener('change', function (e) {
+                    e.stopPropagation();
+                    var weg = !vink.checked;
+                    var i = stukIndex(sleutel, pad);
+                    if (weg && i === -1) { stukken.push({blok: sleutel, pad: pad}); }
+                    if (!weg && i !== -1) { stukken.splice(i, 1); }
+                    regel.classList.toggle('aaw-uitgezet', weg);
+                    pasStukkenToe();
+                    bewaar();
+                });
+
+                var naam = document.createElement('span');
+                naam.textContent = naamVanSectie(el);
+
+                regel.appendChild(vink);
+                regel.appendChild(naam);
+
+                // Zit er in dít stuk zelf nog een indeling? Dan kun je erin.
+                if (heeftSecties(el)) {
+                    var dieper = document.createElement('button');
+                    dieper.type = 'button';
+                    dieper.className = 'aaw-dieper';
+                    dieper.innerHTML = '&#8250;';
+                    dieper.title = '{% translate "in dit stuk kijken" %}';
+                    dieper.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                        toonSecties(blok, el, kruimels.concat([naamVanSectie(el)]));
+                    });
+                    regel.appendChild(dieper);
+                }
+                paneel.appendChild(regel);
+            });
+
+            var terug = paneel.querySelector('.aaw-terug');
+            if (terug) {
+                terug.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    // Eén stap terug: opnieuw tekenen vanaf het blok en dan
+                    // net zo vaak inzakken als er kruimels over zijn.
+                    var pad = kruimels.slice(0, -1);
+                    var doel = blok;
+                    pad.forEach(function (naam) {
+                        var kids = sectiesVan(doel);
+                        for (var i = 0; i < kids.length; i++) {
+                            if (naamVanSectie(kids[i]) === naam) { doel = kids[i]; break; }
+                        }
+                    });
+                    toonSecties(blok, doel, pad);
+                });
+            }
+            paneel.addEventListener('click', function (e) { e.stopPropagation(); });
+            blok.appendChild(paneel);
+        }
+
+        function sluitSecties() {
+            [].forEach.call(row.querySelectorAll('.aaw-secties'), function (el) { el.remove(); });
+            [].forEach.call(row.querySelectorAll('.aaw-kiest'), function (el) {
+                el.classList.remove('aaw-kiest');
+            });
         }
 
         function blokMet(sleutel) {
@@ -293,7 +482,9 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
                 '<button type="button" class="aaw-btn aaw-smaller" title="{% translate "Smaller" %}">&#9668;</button>' +
                 '<span class="aaw-btn aaw-handle" title="{% translate "Versleep om te herschikken" %}" draggable="true">&#9776;</span>' +
                 '<button type="button" class="aaw-btn aaw-bigger" title="{% translate "Breder" %}">&#9658;</button>' +
-                '<button type="button" class="aaw-btn aaw-oog"></button>';
+                '<button type="button" class="aaw-btn aaw-oog"></button>' +
+                '<button type="button" class="aaw-btn aaw-schaar" ' +
+                    'title="{% translate "Stukken van dit blok verbergen" %}">&#9986;</button>';
             el.appendChild(tools);
             var oog = tools.querySelector('.aaw-oog');
             pasOogAan(oog, el.classList.contains('aaw-verborgen'));
@@ -301,6 +492,10 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
                 e.stopPropagation();
                 zetVerborgen(el, !el.classList.contains('aaw-verborgen'));
                 bewaar();
+            });
+            tools.querySelector('.aaw-schaar').addEventListener('click', function (e) {
+                e.stopPropagation();
+                wisselSecties(el);
             });
             tools.querySelector('.aaw-smaller').addEventListener('click', function (e) { e.stopPropagation(); stepWidth(el, -1); });
             tools.querySelector('.aaw-bigger').addEventListener('click', function (e) { e.stopPropagation(); stepWidth(el, 1); });
@@ -390,9 +585,7 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
             '<button type="button" class="aaw-toggle" aria-pressed="false">' +
                 '<span class="aaw-sw"></span> &#9998; {% translate "Dashboard bewerken" %}</button>' +
             '<span class="aaw-hint">&#8645; <b>{% translate "Herschik het dashboard" %}</b> — ' +
-                '{% translate "sleep aan de greep, maak een blok smaller/breder met de pijltjes, of verberg het met het oogje. Met de schaar klik je een los stuk binnen een blok weg. Wat je hier doet geldt voor iedereen." %}</span>' +
-            '<button type="button" class="aaw-reset aaw-schaar">&#9986; ' +
-                '{% translate "Stukken verbergen" %}</button>' +
+                '{% translate "sleep aan de greep, maak een blok smaller/breder met de pijltjes, of verberg het met het oogje. Met de schaar kies je welke stukken van dat blok blijven. Wat je hier doet geldt voor iedereen." %}</span>' +
             '<span class="aaw-tel"></span>' +
             '<span class="aaw-tel aaw-tel-stuk"></span>' +
             '<button type="button" class="aaw-reset">{% translate "Herstel standaard" %}</button>' +
@@ -405,64 +598,14 @@ het puur toepassen. Een MutationObserver plaatst de greep opnieuw als een widget
         telVerborgen();
         telStukken();
 
-        // De schaar: in deze stand klik je een stúk binnen een blok weg.
-        // Bewust een aparte stand, want anders zou elke klik op het dashboard
-        // - een link, een knop in een widget - iets laten verdwijnen.
-        var schaar = bar.querySelector('.aaw-schaar');
-        function zetSchaar(aan) {
-            row.classList.toggle('aaw-stukmodus', aan);
-            schaar.classList.toggle('aaw-aan', aan);
-            if (!aan) {
-                [].forEach.call(row.querySelectorAll('.aaw-stuk-hover'), function (el) {
-                    el.classList.remove('aaw-stuk-hover');
-                });
-            }
-        }
-        schaar.addEventListener('click', function () {
-            if (!row.classList.contains('aaw-editing')) { setEditing(true); }
-            zetSchaar(!row.classList.contains('aaw-stukmodus'));
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { sluitSecties(); }
         });
-
-        var laatsteHover = null;
-        row.addEventListener('mouseover', function (e) {
-            if (!row.classList.contains('aaw-stukmodus')) { return; }
-            var doel = e.target.closest ? e.target.closest('.aaw-item') : null;
-            if (laatsteHover) { laatsteHover.classList.remove('aaw-stuk-hover'); laatsteHover = null; }
-            if (!doel || e.target === doel || e.target.closest('.aaw-tools')) { return; }
-            laatsteHover = e.target;
-            laatsteHover.classList.add('aaw-stuk-hover');
+        document.addEventListener('click', function (e) {
+            if (e.target.closest && (e.target.closest('.aaw-secties') ||
+                                     e.target.closest('.aaw-schaar'))) { return; }
+            sluitSecties();
         });
-
-        row.addEventListener('click', function (e) {
-            if (!row.classList.contains('aaw-stukmodus')) { return; }
-            var blok = e.target.closest ? e.target.closest('.aaw-item') : null;
-            if (!blok || e.target === blok || e.target.closest('.aaw-tools')) { return; }
-            // In deze stand hoort een klik niets anders te doen: geen link
-            // volgen, geen formulier versturen.
-            e.preventDefault();
-            e.stopPropagation();
-            var el = e.target;
-            var sleutel = keyOf(blok);
-            if (el.classList.contains('aaw-stuk-weg')) {
-                // Terugzetten: zoek welk pad hem verborg.
-                for (var i = stukken.length - 1; i >= 0; i--) {
-                    var stuk = stukken[i];
-                    if (stuk.blok !== sleutel) { continue; }
-                    var raak = false;
-                    try { raak = [].indexOf.call(blok.querySelectorAll(stuk.pad), el) !== -1; }
-                    catch (x) { raak = false; }
-                    if (raak) { stukken.splice(i, 1); }
-                }
-            } else {
-                var pad = padVan(el, blok);
-                if (!pad) { return; }
-                if (stukIndex(sleutel, pad) === -1) { stukken.push({blok: sleutel, pad: pad}); }
-            }
-            el.classList.remove('aaw-stuk-hover');
-            laatsteHover = null;
-            pasStukkenToe();
-            bewaar();
-        }, true);
 
         var toggleBtn = bar.querySelector('.aaw-toggle');
         function setEditing(on) {
